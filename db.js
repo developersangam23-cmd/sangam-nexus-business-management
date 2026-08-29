@@ -24,7 +24,42 @@ let shivaayId;
 if (!existingCompany) {
   shivaayId = Number(db.prepare('INSERT INTO companies(name,code) VALUES(?,?)').run('Shivaay International Pvt. Ltd.', 'SHIV').lastInsertRowid);
 } else shivaayId = existingCompany.id;
+// Create core legacy tables first.
+// This is required on a fresh Render database.
+db.exec(`
+CREATE TABLE IF NOT EXISTS products (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ brand TEXT NOT NULL,
+ name TEXT NOT NULL,
+ opening_stock REAL NOT NULL DEFAULT 0,
+ created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 
+CREATE TABLE IF NOT EXISTS purchases (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ product_id INTEGER NOT NULL,
+ quantity REAL NOT NULL DEFAULT 0,
+ supplier TEXT,
+ reference TEXT,
+ purchase_date TEXT NOT NULL,
+ notes TEXT,
+ created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS orders (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ order_number TEXT NOT NULL,
+ shop_name TEXT NOT NULL,
+ customer_name TEXT NOT NULL,
+ product_id INTEGER NOT NULL,
+ quantity REAL NOT NULL DEFAULT 0,
+ unit_price REAL NOT NULL DEFAULT 0,
+ status TEXT NOT NULL DEFAULT 'Pending',
+ order_date TEXT NOT NULL,
+ notes TEXT,
+ created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+`);
 // Safe migrations for the supplied legacy schema.
 addColumn('products', 'company_id', `INTEGER NOT NULL DEFAULT ${shivaayId}`);
 addColumn('products', 'is_rx', 'INTEGER NOT NULL DEFAULT 0');
