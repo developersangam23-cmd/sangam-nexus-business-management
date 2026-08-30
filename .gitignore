@@ -1,6 +1,1 @@
-node_modules/
-.env
-.env.*
-*.sqlite
-*.sqlite3
-npm-debug.log*
+node_modules
