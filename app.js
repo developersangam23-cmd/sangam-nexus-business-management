@@ -8,7 +8,86 @@ function can(m){return user?.role==='Super Admin'||permissions[m]!==false}functi
 async function show(page){document.querySelectorAll('.nav-item').forEach(a=>a.classList.toggle('active',a.dataset.page===page));const c=$('#content');try{if(page==='Dashboard')return dashboard(c);if(page==='Inventory')return inventory(c);if(page==='Sales')return sales(c);if(page==='Purchases')return purchases(c);if(page==='Customers'||page==='Suppliers')return parties(c,page==='Customers'?'Customer':'Supplier');if(page==='Financing')return financing(c);if(page==='Payments')return payments(c);if(page==='Ledger')return ledger(c);if(page==='Users & Roles')return users(c);if(page==='Import / Export')return imports(c);if(page==='Reports')return reports(c);if(page==='Settings')return settings(c)}catch(e){notice(e.message,true)}}
 function head(title,sub,buttons='',banner=false){const bannerHtml=banner?`<section class="growth-banner" aria-label="Sangam Nexus message"><div class="banner-cube" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div><button class="banner-arrow" type="button" aria-label="Previous message">‹</button><div class="banner-message"><p>“Together we grow, <span>Together we build</span>”</p><div class="banner-dots" aria-hidden="true"><i class="active"></i><i></i><i></i></div></div><button class="banner-arrow" type="button" aria-label="Next message">›</button></section>`:'';return bannerHtml+`<div class="page-head"><div><h1>${title}</h1><p class="subtitle">${sub}</p></div><div class="actions">${buttons}</div></div>`}
 async function dashboard(c){const d=await api('/api/dashboard');c.innerHTML=head(`Good Morning, ${esc(user?.displayName||user?.username||'Admin')}! 👋`,'Here is what is happening with your business today.','<button class="btn primary" onclick="openOrder()">＋ Quick Action</button>',true)+`<div class="stats"><div class="stat"><span class="icon">💰</span><small>Total Revenue</small><strong>${money(d.totalRevenue)}</strong><small>↑ 18.6% from last month</small></div><div class="stat"><span class="icon">🛍️</span><small>Total Sales</small><strong>${d.totalSales}</strong><small>↑ 12.8% from last month</small></div><div class="stat"><span class="icon">🛒</span><small>Total Purchases</small><strong>${d.totalPurchases}</strong><small>↑ 9.3% from last month</small></div><div class="stat"><span class="icon">📦</span><small>Total Stock Value</small><strong>${money(d.totalStockValue)}</strong><small>Live stock position</small></div></div><div class="grid"><div class="card"><div class="card-head"><h3>Recent Orders</h3><button class="btn" onclick="show('Sales')">View All</button></div>${orderTable(d.orders,false)}</div><div class="card"><div class="card-head"><h3>Stock Alerts</h3></div><div class="dashboard-alert">⚠️ Low Stock <b>${d.lowStock}</b></div><div class="dashboard-alert">⛔ Out of Stock <b>${d.outOfStock}</b></div><div class="dashboard-alert">ℹ️ Expiring Soon <b>—</b></div></div></div><div class="grid" style="margin-top:16px"><div class="card"><div class="card-head"><h3>Top Products</h3></div>${productTable(d.products)}</div><div class="card"><div class="card-head"><h3>Quick Shortcuts</h3></div><div style="padding:16px;display:grid;gap:8px"><button class="btn primary" onclick="openOrder()">＋ New Sales Order</button><button class="btn" onclick="openPurchase()">＋ New Purchase</button><button class="btn" onclick="openProduct()">＋ Add Product</button><button class="btn" onclick="show('Payments')">💳 Record Payment</button></div></div></div>`}
-function orderTable(rows,showActions=false){return `<div class="table-wrap"><table class="table"><thead><tr>${showActions?'<th>Action</th>':''}<th>Order</th><th>Type</th><th>Party</th><th>Product</th><th>Qty</th><th>Total</th><th>Status</th></tr></thead><tbody>${rows.map(o=>`<tr>${showActions?`<td><div class="actions"><button class="btn" onclick="editOrder(${o.id})">Edit</button><button class="btn danger" onclick="deleteOrder(${o.id})">Delete</button></div></td>`:''}<td>${esc(o.order_number)}</td><td><span class="pill ${o.order_type==='RX'?'amber':'blue'}">${o.order_type||'FSV'}</span></td><td>${esc(o.party_name||o.customer_name)}</td><td>${esc(o.brand)} — ${esc(o.product_name)}</td><td>${o.quantity}</td><td>${money(o.quantity*o.unit_price)}</td><td><span class="pill ${o.status==='Cancelled'?'red':o.status==='Shipped'?'blue':'green'}">${o.status}</span></td></tr>`).join('')||`<tr><td colspan="${showActions?8:7}"><div class="empty">No orders yet.</div></td></tr>`}</tbody></table></div>`}
+function orderTable(rows,showActions=false){return `<div class="table-wrap"><table class="table"><thead><tr>${showActions?'<th>Action</th>':''}<th>Order</th><th>Type</th><th>Party</th><th>Product</th><th>Qty</th><th>Total</th><th>Status</th></tr></thead><tbody>${rows.map(o=>`<tr>${showActions?`<td><div class="actions"><button class="btn" onclick="printBill('${esc(o.bill_number||o.order_number)}')">🖨 Bill</button><button class="btn" onclick="editOrder(${o.id})">Edit</button><button class="btn danger" onclick="deleteOrder(${o.id})">Delete</button></div></td>`:''}<td>${esc(o.order_number)}</td><td><span class="pill ${o.order_type==='RX'?'amber':'blue'}">${o.order_type||'FSV'}</span></td><td>${esc(o.party_name||o.customer_name)}</td><td>${esc(o.brand)} — ${esc(o.product_name)}</td><td>${o.quantity}</td><td>${money(o.quantity*o.unit_price)}</td><td><span class="pill ${o.status==='Cancelled'?'red':o.status==='Shipped'?'blue':'green'}">${o.status}</span></td></tr>`).join('')||`<tr><td colspan="${showActions?8:7}"><div class="empty">No orders yet.</div></td></tr>`}</tbody></table></div>`}
+
+// ---- Sales Bill / Invoice print view (navy & gold design) ----
+async function printBill(billNumber){
+  const key=String(billNumber||'').trim();
+  if(!key)return notice('This order has no bill number to print.',true);
+  let rows=(cache.orders||[]).filter(o=>o.status!=='Cancelled' && String(o.bill_number||o.order_number)===key);
+  if(!rows.length){cache.orders=await api('/api/orders');rows=cache.orders.filter(o=>o.status!=='Cancelled' && String(o.bill_number||o.order_number)===key)}
+  if(!rows.length)return notice('No line items found for bill '+key+'.',true);
+  if(!cache.parties||!cache.parties.length)cache.parties=await api('/api/parties');
+  const first=rows[0];
+  const party=cache.parties.find(p=>p.id===first.party_id);
+  const companyName=($('#company-select option:checked')||{}).textContent||'Sangam Nexus';
+  const customerName=esc(first.party_name||first.customer_name||'');
+  const address=esc(party&&party.address||'');
+  const phone=esc(party&&party.phone||'');
+  const billDate=esc(first.bill_date||first.order_date||today());
+  const subtotal=rows.reduce((a,r)=>a+Number(r.quantity)*Number(r.unit_price),0);
+  const vat=subtotal*0.13;
+  const grandTotal=subtotal+vat;
+  const itemsHtml=rows.map((r,i)=>`<tr><td class="c">${i+1}</td><td>${esc(r.brand)} — ${esc(r.product_name)}</td><td class="c">${r.quantity}</td><td class="r">${money(r.unit_price).replace('Rs. ','')}</td><td class="r">${money(r.quantity*r.unit_price).replace('Rs. ','')}</td></tr>`).join('');
+  const html=`<!doctype html><html><head><meta charset="utf-8"><title>Sales Bill ${esc(key)}</title><style>
+${BILL_CSS}
+</style></head><body>
+<div class="bill">
+  <div class="gold-bar"></div>
+  <div class="bill-header"><h1>${esc(companyName).toUpperCase()}</h1><p>Business Address, City, Nepal &nbsp;|&nbsp; PAN/VAT: XXXXXXXXX &nbsp;|&nbsp; Ph: XXXXXXXXXX</p></div>
+  <div class="gold-bar"></div>
+  <h2 class="bill-title">SALES BILL</h2>
+  <div class="meta-grid">
+    <div class="meta-box"><div class="meta-head">Bill To</div><div class="meta-body"><b>${customerName}</b><br>${address}${address&&phone?' &nbsp;|&nbsp; ':''}${phone}</div></div>
+    <div class="meta-box"><div class="meta-head">Bill Details</div><div class="meta-body">Bill No.: <b>${esc(key)}</b><br>Date: <b>${billDate}</b></div></div>
+  </div>
+  <table class="items"><thead><tr><th>S.N.</th><th>Description of Goods / Items</th><th>Qty</th><th>Rate (Rs.)</th><th>Amount (Rs.)</th></tr></thead>
+  <tbody>${itemsHtml}</tbody></table>
+  <table class="totals">
+    <tr><td>Sub Total</td><td class="r">${subtotal.toLocaleString(undefined,{maximumFractionDigits:2})}</td></tr>
+    <tr><td>VAT @ 13%</td><td class="r">${vat.toLocaleString(undefined,{maximumFractionDigits:2})}</td></tr>
+    <tr class="grand"><td>GRAND TOTAL (Rs.)</td><td class="r">${grandTotal.toLocaleString(undefined,{maximumFractionDigits:2})}</td></tr>
+  </table>
+  <p class="note">Note: Goods once sold will not be taken back or exchanged.</p>
+  <p class="thanks">Thank you for your business!</p>
+  <div class="sign-row"><div>Customer Signature</div><div>Authorized Signature</div></div>
+  <div class="gold-bar"></div>
+</div>
+<script>window.onload=()=>{window.print()}</script>
+</body></html>`;
+  const w=window.open('','_blank','width=850,height=1000');
+  if(!w)return notice('Please allow pop-ups to print the bill.',true);
+  w.document.write(html);w.document.close();w.focus()
+}
+const BILL_CSS=`
+:root{--navy:#16324F;--gold:#C9A227;--light:#EAF1FB;--grey:#6B7280}
+*{box-sizing:border-box}
+body{font-family:Calibri,Arial,sans-serif;color:#1a1a1a;margin:0;padding:24px;background:#fff}
+.bill{max-width:760px;margin:0 auto;border:1px solid #d8dee6}
+.gold-bar{height:6px;background:var(--gold)}
+.bill-header{background:var(--navy);color:#fff;text-align:center;padding:18px 10px 12px}
+.bill-header h1{margin:0;font-size:28px;letter-spacing:1px}
+.bill-header p{margin:6px 0 0;font-size:11px;font-style:italic;opacity:.9}
+.bill-title{text-align:center;color:var(--navy);font-size:20px;margin:18px 0 14px}
+.meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:0 20px;margin-bottom:16px}
+.meta-box{border:1px solid #d8dee6}
+.meta-head{background:var(--navy);color:#fff;font-weight:bold;font-size:12px;padding:6px 10px}
+.meta-body{background:var(--light);font-size:12px;padding:10px;line-height:1.6}
+table.items{width:calc(100% - 40px);margin:0 20px;border-collapse:collapse}
+table.items th{background:var(--navy);color:#fff;font-size:12px;padding:8px;text-align:left}
+table.items td{border:1px solid #d8dee6;padding:7px 8px;font-size:12px}
+table.items td.c{text-align:center}table.items td.r{text-align:right}
+table.totals{width:calc(100% - 40px);margin:14px 20px 0;border-collapse:collapse}
+table.totals td{padding:7px 10px;font-size:13px;background:var(--light);border:1px solid #d8dee6}
+table.totals td:first-child{text-align:right;font-weight:600;color:var(--navy);width:80%}
+table.totals td.r{text-align:right}
+table.totals tr.grand td{background:var(--navy);color:#fff;font-weight:bold;font-size:14px}
+.note{font-size:11px;font-style:italic;color:var(--grey);padding:0 20px;margin:16px 0 0}
+.thanks{text-align:center;font-weight:bold;font-style:italic;color:var(--navy);margin:8px 0 26px}
+.sign-row{display:flex;justify-content:space-between;padding:0 40px 24px;font-size:12px;font-weight:600;color:var(--navy)}
+.sign-row div{border-top:1px solid #999;padding-top:6px;width:200px;text-align:center}
+@media print{body{padding:0}.bill{border:none;max-width:100%}}
+`;
 function productTable(rows){return `<div class="table-wrap"><table class="table"><thead><tr><th>Product</th><th>Stock</th><th>Sold</th><th>Return</th><th>RX</th></tr></thead><tbody>${rows.map(p=>`<tr><td>${esc(p.brand)} — ${esc(p.name)}</td><td>${p.current_stock}</td><td>${p.sold}</td><td>${p.returned}</td><td>${p.is_rx?'Yes':'No'}</td></tr>`).join('')||`<tr><td colspan="5"><div class="empty">No products.</div></td></tr>`}</tbody></table></div>`}
 async function inventory(c){cache.products=await api('/api/products');c.innerHTML=head('Inventory','Current stock = opening + purchases + returns − sales − FOC.','<button class="btn" onclick="openImport()">Import / Export</button><button class="btn primary" onclick="openProduct()">＋ Add Product</button><button class="btn danger" onclick="bulkDelete()">Delete Selected</button>')+`<div class="toolbar"><input id="inv-search" placeholder="Search brand or product..."><label><input type="checkbox" id="select-all"> Select All</label></div><div class="card">${productTableSelectable(cache.products)}</div>`;$('#select-all').onchange=e=>document.querySelectorAll('.product-check').forEach(x=>x.checked=e.target.checked);$('#inv-search').oninput=e=>document.querySelectorAll('#inv-body tr').forEach(r=>r.hidden=!r.textContent.toLowerCase().includes(e.target.value.toLowerCase()))}
 function productTableSelectable(ps){return `<div class="table-wrap"><table class="table"><thead><tr><th></th><th>Brand</th><th>Product / SKU</th><th>Opening</th><th>Purchased</th><th>Sold</th><th>Return</th><th>FOC</th><th>Current</th><th>RX</th><th></th></tr></thead><tbody id="inv-body">${ps.map(p=>`<tr><td><input class="product-check" type="checkbox" value="${p.id}"></td><td>${esc(p.brand)}</td><td>${esc(p.name)}</td><td>${p.opening_stock}</td><td>${p.purchased}</td><td>${p.sold}</td><td>${p.returned}</td><td>${p.foc}</td><td><b>${p.current_stock}</b></td><td>${p.is_rx?'Yes':'No'}</td><td><button class="btn" onclick="editProduct(${p.id})">Edit</button></td></tr>`).join('')}</tbody></table></div>`}
@@ -18,7 +97,8 @@ function returnRows(rows){return `<div class="table-wrap"><table class="table"><
 function focRows(rows){return `<div class="table-wrap"><table class="table"><thead><tr><th>FOC Number</th><th>Party</th><th>Product</th><th>Quantity</th><th>Action</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.foc_number)}</td><td>${esc(r.party_name||'')}</td><td>${esc(r.product_name)}</td><td>${r.quantity}</td><td><div class="actions"><button class="btn" onclick="editFoc(${r.id})">Edit</button><button class="btn danger" onclick="deleteFoc(${r.id})">Delete</button></div></td></tr>`).join('')||'<tr><td colspan="5"><div class="empty">No records.</div></td></tr>'}</tbody></table></div>`}
 async function purchases(c){cache.purchases=await api('/api/purchases');c.innerHTML=head('Purchases','Every purchase increases stock.','<button class="btn" onclick="openImport()">Import / Export</button><button class="btn primary" onclick="openPurchase()">＋ New Purchase</button>')+`<div class="card"><div class="table-wrap"><table class="table"><thead><tr><th>Date</th><th>Product</th><th>Qty</th><th>Supplier</th><th>Reference</th><th>Action</th></tr></thead><tbody>${cache.purchases.map(p=>`<tr><td>${esc(p.purchase_date)}</td><td>${esc(p.brand)} — ${esc(p.product_name)}</td><td>${p.quantity}</td><td>${esc(p.supplier)}</td><td>${esc(p.reference)}</td><td><div class="actions"><button class="btn" onclick="editPurchase(${p.id})">Edit</button><button class="btn danger" onclick="deletePurchase(${p.id})">Delete</button></div></td></tr>`).join('')||'<tr><td colspan="6"><div class="empty">No purchases yet.</div></td></tr>'}</tbody></table></div></div>`}
 async function parties(c,type){cache.parties=await api('/api/parties');const rows=cache.parties.filter(p=>type==='Customer'?p.type==='Customer'||p.type==='Both':p.type==='Supplier'||p.type==='Both');c.innerHTML=head(type+'s','Manage parties, opening balances and contact details.',`<button class="btn primary" onclick="openParty('${type}')">＋ Add ${type}</button>`)+`<div class="card">${simpleRows(rows,['name','type','phone','email','opening_balance'])}</div>`}
-async function financing(c){const rows=await api('/api/financing');c.innerHTML=head('Financing','Sales bills and cumulative receivable position.','<button class="btn" onclick="show(\'Payments\')">Record Payment</button>')+`<div class="stats"><div class="stat"><small>Total Bills</small><strong>${rows.length}</strong></div><div class="stat"><small>Total Sales Bills</small><strong>${money(rows.reduce((a,r)=>a+r.total_amount,0))}</strong></div></div><div class="card">${simpleRows(rows,['party_name','bill_number','bill_date','total_amount','status'])}</div>`}
+async function financing(c){const rows=await api('/api/financing');c.innerHTML=head('Financing','Sales bills and cumulative receivable position.','<button class="btn" onclick="show(\'Payments\')">Record Payment</button>')+`<div class="stats"><div class="stat"><small>Total Bills</small><strong>${rows.length}</strong></div><div class="stat"><small>Total Sales Bills</small><strong>${money(rows.reduce((a,r)=>a+r.total_amount,0))}</strong></div></div><div class="card">${financingRows(rows)}</div>`}
+function financingRows(rows){return `<div class="table-wrap"><table class="table"><thead><tr><th>Party</th><th>Bill Number</th><th>Bill Date</th><th>Total Amount</th><th>Status</th><th>Action</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.party_name)}</td><td>${esc(r.bill_number)}</td><td>${esc(r.bill_date)}</td><td>${money(r.total_amount)}</td><td><span class="pill ${r.status==='Cancelled'?'red':r.status==='Shipped'?'blue':'green'}">${esc(r.status)}</span></td><td><button class="btn" onclick="printBill('${esc(r.bill_number)}')">🖨 Bill</button></td></tr>`).join('')||'<tr><td colspan="6"><div class="empty">No bills yet.</div></td></tr>'}</tbody></table></div>`}
 async function payments(c){const rows=await api('/api/payments');c.innerHTML=head('Payments','Record money received from customers and paid to suppliers.','<button class="btn primary" onclick="openPayment()">＋ Record Payment</button>')+`<div class="card">${paymentRows(rows)}</div>`}
 function paymentRows(rows){return `<div class="table-wrap"><table class="table"><thead><tr><th>Date</th><th>Party</th><th>Type</th><th>Amount</th><th>Bill Number</th><th>Reference</th><th>Action</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.payment_date)}</td><td>${esc(r.party_name||'Unassigned')}</td><td>${esc(r.payment_type)}</td><td>${money(r.amount)}</td><td>${esc(r.bill_number)}</td><td>${esc(r.reference)}</td><td><div class="actions"><button class="btn" onclick="editPayment(${r.id})">Edit</button><button class="btn danger" onclick="deletePayment(${r.id})">Delete</button></div></td></tr>`).join('')||'<tr><td colspan="7"><div class="empty">No payments yet.</div></td></tr>'}</tbody></table></div>`}
 async function ledger(c){const parties=await api('/api/parties');c.innerHTML=head('Ledger','Select a party to see invoice, return and payment movements.','<button class="btn" onclick="window.print()">Print</button>')+`<div class="toolbar"><select id="ledger-party"><option value="">Select Party</option>${parties.map(p=>`<option value="${p.id}">${esc(p.name)} — ${esc(p.type)}</option>`).join('')}</select><input id="ledger-from" type="date" value="${today().slice(0,8)}01"><input id="ledger-to" type="date" value="${today()}"><button class="btn primary" onclick="loadLedger()">View Ledger</button></div><div id="ledger-result" class="card"><div class="empty">Select a party and click View Ledger.</div></div>`}
