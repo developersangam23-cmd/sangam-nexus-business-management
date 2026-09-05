@@ -1,0 +1,38 @@
+name: Fix Nepal Time Greeting
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Update dashboard greeting
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app.js')
+          s = p.read_text(encoding='utf-8')
+          helper = "function nepalGreeting(){const parts=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Kathmandu',hour:'numeric',hour12:false}).formatToParts(new Date());const hour=Number(parts.find(p=>p.type==='hour')?.value||0);if(hour>=5&&hour<12)return'Good Morning';if(hour>=12&&hour<17)return'Good Afternoon';return'Good Evening'}\n"
+          old = "async function dashboard(c){"
+          new = helper + old
+          if 'function nepalGreeting()' not in s:
+              s = s.replace(old, new, 1)
+          old_greeting = "head(`Good Morning, ${esc(user?.displayName||user?.username||'Admin')}! 👋`"
+          new_greeting = "head(`${nepalGreeting()}, ${esc(user?.displayName||user?.username||'Admin')}! 👋`"
+          if old_greeting not in s:
+              raise SystemExit('Expected dashboard greeting was not found; no change made.')
+          s = s.replace(old_greeting, new_greeting, 1)
+          p.write_text(s, encoding='utf-8')
+          PY
+      - name: Commit change and remove temporary workflow
+        run: |
+          rm -f .github/workflows/fix-nepal-greeting.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app.js .github/workflows/fix-nepal-greeting.yml
+          git commit -m "Fix dashboard greeting for Nepal time"
+          git push
